@@ -12,6 +12,7 @@ This n8n community node converts images to PDF documents and merges existing PDF
 
 Input items and binary properties are processed in the order received from n8n.
 Multiple outputs use zero-based numbered filenames such as `document_0.pdf`, `document_1.pdf`, or `page_0.png`.
+Their n8n binary field names are numbered in the same way, for example `data_0`, `data_1`, and `data_2`.
 
 ## Installation
 
@@ -23,7 +24,7 @@ Install `n8n-nodes-pdf-actions` from **Settings > Community Nodes** in your self
 - **Output Binary Field**: binary property receiving the generated PDF. The default is `data`.
 - **Output File Name**: output filename or base name for numbered multi-file outputs.
 - **Image Format**: PNG or JPEG for PDF-to-image conversion.
-- **Render Scale**: controls the dimensions and sharpness of rendered images.
+- **Render Scale**: controls the dimensions and sharpness of rendered images. The default is `1`.
 - **JPEG Quality**: controls JPEG compression quality.
 - **Keep Source Files**: preserves the source images or PDFs alongside the generated PDF.
 

@@ -235,12 +235,17 @@ test('one PDF to multiple PDFs returns numbered single-page outputs', async () =
 
 	assert.equal(output.length, 3);
 	assert.deepEqual(
-		output.map((item) => item.binary.data.fileName),
+		output.map((item) => Object.values(item.binary)[0].fileName),
 		['document_0.pdf', 'document_1.pdf', 'document_2.pdf'],
 	);
 	for (const item of output) {
-		assert.equal(await getPageCount(Buffer.from(item.binary.data.data, 'base64')), 1);
+		const binary = Object.values(item.binary)[0];
+		assert.equal(await getPageCount(Buffer.from(binary.data, 'base64')), 1);
 	}
+	assert.deepEqual(
+		output.map((item) => Object.keys(item.binary)[0]),
+		['data_0', 'data_1', 'data_2'],
+	);
 });
 
 test('one PDF to multiple images returns numbered PNG outputs', async () => {
@@ -269,7 +274,11 @@ test('one PDF to multiple images returns numbered PNG outputs', async () => {
 
 	assert.equal(output.length, 2);
 	assert.deepEqual(
-		output.map((item) => item.binary.data.fileName),
+		output.map((item) => Object.values(item.binary)[0].fileName),
 		['page_0.png', 'page_1.png'],
+	);
+	assert.deepEqual(
+		output.map((item) => Object.keys(item.binary)[0]),
+		['data_0', 'data_1'],
 	);
 });
