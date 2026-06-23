@@ -26,6 +26,9 @@
     "lint:fix": "n8n-node lint --fix",
     "test": "npm run build && node --test test/*.test.js",
     "release": "n8n-node release",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major",
     "prepublishOnly": "n8n-node prerelease"
   },
   "files": [
