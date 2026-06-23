@@ -3,6 +3,7 @@
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Utility"],
+	"alias": ["PDF", "pdf", "PDF Actions", "merge PDF", "split PDF", "PDF to image"],
 	"resources": {
 		"primaryDocumentation": [
 			{

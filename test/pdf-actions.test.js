@@ -4,9 +4,12 @@ const { PDFDocument } = require('pdf-lib');
 
 const {
 	createPdf,
+	createNumberedFileName,
 	mergePdfs,
 	normalizePdfName,
 	PdfActions,
+	renderPdfPages,
+	splitPdf,
 } = require('../dist/nodes/PdfActions/PdfActions.node.js');
 
 const png = Buffer.from(
@@ -30,6 +33,18 @@ test('normalizes PDF filenames', () => {
 	assert.equal(normalizePdfName('  '), 'images.pdf');
 });
 
+test('exposes a searchable pdfActions node name', () => {
+	const description = new PdfActions().description;
+	assert.equal(description.displayName, 'pdfActions');
+	assert.equal(description.name, 'pdfActions');
+});
+
+test('creates zero-based numbered output filenames', () => {
+	assert.equal(createNumberedFileName('document.pdf', 0, 'pdf'), 'document_0.pdf');
+	assert.equal(createNumberedFileName('scan.png', 7, 'jpg'), 'scan_7.jpg');
+	assert.equal(createNumberedFileName('', 2, 'png'), 'output_2.png');
+});
+
 test('creates one PDF page for every supplied image', async () => {
 	const pdf = await createPdf([
 		{ buffer: png, key: 'first' },
@@ -49,12 +64,37 @@ test('merges every page from supplied PDF files', async () => {
 	assert.equal(await getPageCount(pdf), 5);
 });
 
+test('splits a PDF into one single-page PDF per page', async () => {
+	const pages = await splitPdf(await createSourcePdf(3));
+
+	assert.equal(pages.length, 3);
+	assert.deepEqual(await Promise.all(pages.map(getPageCount)), [1, 1, 1]);
+});
+
+test('renders every PDF page as PNG or JPEG', async () => {
+	const sourcePdf = await createSourcePdf(2);
+	const pngPages = await renderPdfPages(sourcePdf, 'png', 1, 0.9);
+	const jpegPages = await renderPdfPages(sourcePdf, 'jpeg', 1, 0.9);
+
+	assert.equal(pngPages.length, 2);
+	assert.equal(pngPages[0].subarray(1, 4).toString(), 'PNG');
+	assert.equal(jpegPages.length, 2);
+	assert.deepEqual([...jpegPages[0].subarray(0, 2)], [0xff, 0xd8]);
+});
+
 test('rejects empty image and PDF lists', async () => {
 	await assert.rejects(createPdf([]), /No image binary data was found/);
 	await assert.rejects(mergePdfs([]), /No PDF binary data was found/);
 });
 
-function executionContext({ action, items, buffers, keepSources = false }) {
+function executionContext({
+	action,
+	items,
+	buffers,
+	keepSources = false,
+	imageFormat = 'png',
+	pdfName = 'output.pdf',
+}) {
 	return {
 		continueOnFail: () => false,
 		getInputData: () => items,
@@ -63,17 +103,23 @@ function executionContext({ action, items, buffers, keepSources = false }) {
 			type: 'pdfActions',
 			parameters: {
 				action,
+				imageFormat,
+				jpegQuality: 90,
 				keepSources,
 				outputKey: 'data',
-				pdfName: 'output.pdf',
+				pdfName,
+				renderScale: 1,
 			},
 		}),
 		getNodeParameter: (name) =>
 			({
 				action,
+				imageFormat,
+				jpegQuality: 90,
 				keepSources,
 				outputKey: 'data',
-				pdfName: 'output.pdf',
+				pdfName,
+				renderScale: 1,
 			})[name],
 		helpers: {
 			getBinaryDataBuffer: async (itemIndex, key) => buffers[itemIndex][key],
@@ -110,6 +156,10 @@ test('multiple images to multiple PDFs returns one PDF per input item', async ()
 	assert.deepEqual(
 		output.map((item) => item.json.index),
 		[0, 1, 2, 3, 4],
+	);
+	assert.deepEqual(
+		output.map((item) => item.binary.data.fileName),
+		['output_0.pdf', 'output_1.pdf', 'output_2.pdf', 'output_3.pdf', 'output_4.pdf'],
 	);
 });
 
@@ -158,4 +208,68 @@ test('multiple PDFs to one PDF preserves every source page', async () => {
 
 	assert.equal(output.length, 1);
 	assert.equal(await getPageCount(mergedPdf), 5);
+});
+
+test('one PDF to multiple PDFs returns numbered single-page outputs', async () => {
+	const sourcePdf = await createSourcePdf(3);
+	const items = [
+		{
+			json: { source: 'document' },
+			binary: {
+				document: {
+					data: sourcePdf.toString('base64'),
+					mimeType: 'application/pdf',
+					fileName: 'source.pdf',
+				},
+			},
+		},
+	];
+	const [output] = await new PdfActions().execute.call(
+		executionContext({
+			action: 'pdfToPdfs',
+			items,
+			buffers: [{ document: sourcePdf }],
+			pdfName: 'document.pdf',
+		}),
+	);
+
+	assert.equal(output.length, 3);
+	assert.deepEqual(
+		output.map((item) => item.binary.data.fileName),
+		['document_0.pdf', 'document_1.pdf', 'document_2.pdf'],
+	);
+	for (const item of output) {
+		assert.equal(await getPageCount(Buffer.from(item.binary.data.data, 'base64')), 1);
+	}
+});
+
+test('one PDF to multiple images returns numbered PNG outputs', async () => {
+	const sourcePdf = await createSourcePdf(2);
+	const items = [
+		{
+			json: { source: 'document' },
+			binary: {
+				document: {
+					data: sourcePdf.toString('base64'),
+					mimeType: 'application/pdf',
+					fileName: 'source.pdf',
+				},
+			},
+		},
+	];
+	const [output] = await new PdfActions().execute.call(
+		executionContext({
+			action: 'pdfToImages',
+			items,
+			buffers: [{ document: sourcePdf }],
+			imageFormat: 'png',
+			pdfName: 'page',
+		}),
+	);
+
+	assert.equal(output.length, 2);
+	assert.deepEqual(
+		output.map((item) => item.binary.data.fileName),
+		['page_0.png', 'page_1.png'],
+	);
 });
