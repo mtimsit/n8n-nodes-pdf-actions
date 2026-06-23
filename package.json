@@ -1,14 +1,19 @@
 {
   "name": "n8n-nodes-pdf-actions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create one PDF per n8n item or merge every incoming image into a single PDF.",
   "license": "MIT",
-    "homepage": "https://github.com/mtimsit/n8n-nodes-pdf-actions#readme",
-  "keywords": ["n8n-community-node-package"],
-  "author": { "name": "Michael Timsit", "email": "michael.timsit@gmail.com" },
+  "homepage": "https://github.com/mtimsit/n8n-nodes-pdf-actions#readme",
+  "keywords": [
+    "n8n-community-node-package"
+  ],
+  "author": {
+    "name": "Michael Timsit",
+    "email": "michael.timsit@gmail.com"
+  },
   "repository": {
     "type": "git",
-        "url": "https://github.com/mtimsit/n8n-nodes-pdf-actions.git"
+    "url": "https://github.com/mtimsit/n8n-nodes-pdf-actions.git"
   },
   "scripts": {
     "build": "n8n-node build",
@@ -20,14 +25,21 @@
     "release": "n8n-node release",
     "prepublishOnly": "n8n-node prerelease"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "n8n": {
     "n8nNodesApiVersion": 1,
     "strict": false,
     "credentials": [],
-    "nodes": ["dist/nodes/PdfActions/PdfActions.node.js"]
+    "nodes": [
+      "dist/nodes/PdfActions/PdfActions.node.js"
+    ]
   },
-  "dependencies": { "image-size": "2.0.2", "pdfkit": "0.19.1" },
+  "dependencies": {
+    "image-size": "2.0.2",
+    "pdfkit": "0.19.1"
+  },
   "devDependencies": {
     "@n8n/node-cli": "0.35.1",
     "@types/pdfkit": "^0.17.3",
@@ -36,5 +48,7 @@
     "release-it": "^19.0.4",
     "typescript": "5.9.2"
   },
-  "peerDependencies": { "n8n-workflow": "*" }
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
 }
