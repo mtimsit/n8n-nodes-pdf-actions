@@ -254,7 +254,7 @@ export class PdfActions implements INodeType {
 					maxValue: 5,
 					numberPrecision: 1,
 				},
-				default: 2,
+				default: 1,
 				description: 'Page rendering scale; higher values produce larger, sharper images',
 				displayOptions: {
 					show: {
@@ -392,7 +392,7 @@ async function executePdfToMultiple(
 	const outputName = this.getNodeParameter('pdfName', 0, 'output') as string;
 	const keepSources = getKeepSources.call(this, 0);
 	const imageFormat = this.getNodeParameter('imageFormat', 0, 'png') as ImageFormat;
-	const renderScale = this.getNodeParameter('renderScale', 0, 2) as number;
+	const renderScale = this.getNodeParameter('renderScale', 0, 1) as number;
 	const jpegQuality = (this.getNodeParameter('jpegQuality', 0, 90) as number) / 100;
 	let outputIndex = 0;
 
@@ -420,7 +420,8 @@ async function executePdfToMultiple(
 				if (keepSources) outputBinary[key] = { ...binary };
 
 				const fileName = createNumberedFileName(outputName, outputIndex, extension);
-				outputBinary[outputKey] = await this.helpers.prepareBinaryData(
+				const numberedOutputKey = `${outputKey}_${outputIndex}`;
+				outputBinary[numberedOutputKey] = await this.helpers.prepareBinaryData(
 					outputBuffers[pageIndex],
 					fileName,
 					mimeType,
