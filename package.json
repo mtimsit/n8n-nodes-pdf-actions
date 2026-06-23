@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-pdf-actions",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Convert images to PDFs or merge images and existing PDFs in n8n.",
   "engines": {
     "node": ">=22.13.0"
