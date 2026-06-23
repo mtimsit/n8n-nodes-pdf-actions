@@ -7,15 +7,26 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { ApplicationError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { PDFDocument as PDFLibDocument } from 'pdf-lib';
 import PDFDocument from 'pdfkit';
 
-interface ImageInput {
+interface BinaryInput {
 	buffer: Buffer;
 	key: string;
 }
 
+type PdfAction = 'imagesToPdfs' | 'imagesToOnePdf' | 'pdfsToOnePdf';
+
 function isImage(binary: IBinaryData): boolean {
 	return binary.mimeType?.startsWith('image/') === true || binary.fileType === 'image';
+}
+
+function isPdf(binary: IBinaryData): boolean {
+	return (
+		binary.mimeType === 'application/pdf' ||
+		binary.fileExtension?.toLowerCase() === 'pdf' ||
+		binary.fileName?.toLowerCase().endsWith('.pdf') === true
+	);
 }
 
 export function normalizePdfName(name: string): string {
@@ -23,7 +34,7 @@ export function normalizePdfName(name: string): string {
 	return trimmedName.toLowerCase().endsWith('.pdf') ? trimmedName : `${trimmedName}.pdf`;
 }
 
-export async function createPdf(images: ImageInput[]): Promise<Buffer> {
+export async function createPdf(images: BinaryInput[]): Promise<Buffer> {
 	if (images.length === 0) {
 		throw new ApplicationError('No image binary data was found');
 	}
@@ -61,15 +72,32 @@ export async function createPdf(images: ImageInput[]): Promise<Buffer> {
 	return await completedPdf;
 }
 
+export async function mergePdfs(pdfs: BinaryInput[]): Promise<Buffer> {
+	if (pdfs.length === 0) {
+		throw new ApplicationError('No PDF binary data was found');
+	}
+
+	const mergedPdf = await PDFLibDocument.create();
+
+	for (const pdf of pdfs) {
+		const sourcePdf = await PDFLibDocument.load(pdf.buffer);
+		const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+		for (const page of pages) mergedPdf.addPage(page);
+	}
+
+	return Buffer.from(await mergedPdf.save());
+}
+
 export class PdfActions implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'PDF Actions',
 		name: 'pdfActions',
 		icon: { light: 'file:pdf-actions.svg', dark: 'file:pdf-actions.dark.svg' },
 		group: ['transform'],
-		version: 1,
-		description: 'Convert incoming images to PDF documents',
-		subtitle: '={{$parameter["mergeAll"] ? "Merge all images" : "One PDF per item"}}',
+		version: [1, 2],
+		description: 'Convert images to PDFs or merge existing PDF documents',
+		subtitle:
+			'={{$parameter["action"] === "imagesToPdfs" ? "Images to PDFs" : $parameter["action"] === "pdfsToOnePdf" ? "Merge PDFs" : "Images to one PDF"}}',
 		defaults: {
 			name: 'PDF Actions',
 		},
@@ -78,12 +106,31 @@ export class PdfActions implements INodeType {
 		usableAsTool: true,
 		properties: [
 			{
-				displayName: 'Merge Into One PDF',
-				name: 'mergeAll',
-				type: 'boolean',
-				default: false,
-				description:
-					'Whether to merge images from every input item into one PDF instead of creating one PDF per item',
+				displayName: 'Action',
+				name: 'action',
+				type: 'options',
+				noDataExpression: true,
+				options: [
+					{
+						name: 'Multiple Images to Multiple PDFs',
+						value: 'imagesToPdfs',
+						description: 'Create one PDF for every incoming item containing images',
+						action: 'Convert images to separate PDF documents',
+					},
+					{
+						name: 'Multiple Images to One PDF',
+						value: 'imagesToOnePdf',
+						description: 'Merge all incoming images into a single PDF',
+						action: 'Convert multiple images to one PDF',
+					},
+					{
+						name: 'Multiple PDFs to One PDF',
+						value: 'pdfsToOnePdf',
+						description: 'Merge all pages from incoming PDF files into a single PDF',
+						action: 'Merge PDF documents into one file',
+					},
+				],
+				default: 'imagesToOnePdf',
 			},
 			{
 				displayName: 'Output Binary Field',
@@ -102,25 +149,31 @@ export class PdfActions implements INodeType {
 				description: 'Name of the generated PDF file',
 			},
 			{
-				displayName: 'Keep Source Images',
-				name: 'keepImages',
+				displayName: 'Keep Source Files',
+				name: 'keepSources',
 				type: 'boolean',
 				default: false,
-				description: 'Whether to keep the source image binaries in the output',
+				description: 'Whether to keep source images or PDFs alongside the generated PDF',
 			},
 		],
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const inputItems = this.getInputData();
-		const mergeAll = this.getNodeParameter('mergeAll', 0, false) as boolean;
+		const nodeParameters = this.getNode().parameters;
+		let action = nodeParameters.action as PdfAction | undefined;
+
+		if (!action) {
+			const legacyMergeAll = nodeParameters.mergeAll as boolean | undefined;
+			action = legacyMergeAll === false ? 'imagesToPdfs' : 'imagesToOnePdf';
+		}
 
 		try {
-			if (mergeAll) {
-				return await executeMerged.call(this, inputItems);
+			if (action === 'imagesToPdfs') {
+				return await executeImagesPerItem.call(this, inputItems);
 			}
 
-			return await executePerItem.call(this, inputItems);
+			return await executeMerged.call(this, inputItems, action);
 		} catch (error) {
 			if (this.continueOnFail()) {
 				return [
@@ -142,31 +195,37 @@ export class PdfActions implements INodeType {
 async function executeMerged(
 	this: IExecuteFunctions,
 	inputItems: INodeExecutionData[],
+	action: Exclude<PdfAction, 'imagesToPdfs'>,
 ): Promise<INodeExecutionData[][]> {
-	const images: ImageInput[] = [];
+	const sources: BinaryInput[] = [];
 	const outputBinary: Record<string, IBinaryData> = {};
-	const keepImages = this.getNodeParameter('keepImages', 0, false) as boolean;
+	const keepSources = getKeepSources.call(this, 0);
 
 	for (let itemIndex = 0; itemIndex < inputItems.length; itemIndex++) {
 		for (const [key, binary] of Object.entries(inputItems[itemIndex].binary ?? {})) {
-			if (!isImage(binary)) continue;
+			const matchesAction = action === 'imagesToOnePdf' ? isImage(binary) : isPdf(binary);
+			if (!matchesAction) continue;
 
-			images.push({
+			sources.push({
 				buffer: await this.helpers.getBinaryDataBuffer(itemIndex, key),
 				key,
 			});
 
-			if (keepImages) {
+			if (keepSources) {
 				outputBinary[`item_${itemIndex}_${key}`] = { ...binary };
 			}
 		}
 	}
 
 	try {
-		const pdf = await createPdf(images);
+		const pdf = action === 'imagesToOnePdf' ? await createPdf(sources) : await mergePdfs(sources);
 		const outputKey = this.getNodeParameter('outputKey', 0, 'data') as string;
 		const pdfName = normalizePdfName(
-			this.getNodeParameter('pdfName', 0, 'images.pdf') as string,
+			this.getNodeParameter(
+				'pdfName',
+				0,
+				action === 'imagesToOnePdf' ? 'images.pdf' : 'merged.pdf',
+			) as string,
 		);
 		outputBinary[outputKey] = await this.helpers.prepareBinaryData(
 			pdf,
@@ -188,7 +247,7 @@ async function executeMerged(
 	}
 }
 
-async function executePerItem(
+async function executeImagesPerItem(
 	this: IExecuteFunctions,
 	inputItems: INodeExecutionData[],
 ): Promise<INodeExecutionData[][]> {
@@ -197,9 +256,9 @@ async function executePerItem(
 	for (let itemIndex = 0; itemIndex < inputItems.length; itemIndex++) {
 		try {
 			const sourceItem = inputItems[itemIndex];
-			const images: ImageInput[] = [];
+			const images: BinaryInput[] = [];
 			const outputBinary: Record<string, IBinaryData> = {};
-			const keepImages = this.getNodeParameter('keepImages', itemIndex, false) as boolean;
+			const keepSources = getKeepSources.call(this, itemIndex);
 
 			for (const [key, binary] of Object.entries(sourceItem.binary ?? {})) {
 				if (isImage(binary)) {
@@ -207,7 +266,7 @@ async function executePerItem(
 						buffer: await this.helpers.getBinaryDataBuffer(itemIndex, key),
 						key,
 					});
-					if (keepImages) outputBinary[key] = { ...binary };
+					if (keepSources) outputBinary[key] = { ...binary };
 				} else {
 					outputBinary[key] = { ...binary };
 				}
@@ -243,4 +302,13 @@ async function executePerItem(
 	}
 
 	return [outputItems];
+}
+
+function getKeepSources(this: IExecuteFunctions, itemIndex: number): boolean {
+	const parameters = this.getNode().parameters;
+	if (parameters.keepSources === undefined && parameters.keepImages !== undefined) {
+		return this.getNodeParameter('keepImages', itemIndex, false) as boolean;
+	}
+
+	return this.getNodeParameter('keepSources', itemIndex, false) as boolean;
 }

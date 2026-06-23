@@ -1,7 +1,7 @@
 {
   "name": "n8n-nodes-pdf-actions",
   "version": "0.1.1",
-  "description": "Create one PDF per n8n item or merge every incoming image into a single PDF.",
+  "description": "Convert images to PDFs or merge images and existing PDFs in n8n.",
   "license": "MIT",
   "homepage": "https://github.com/mtimsit/n8n-nodes-pdf-actions#readme",
   "keywords": [
@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "image-size": "2.0.2",
+    "pdf-lib": "1.17.1",
     "pdfkit": "0.19.1"
   },
   "devDependencies": {
