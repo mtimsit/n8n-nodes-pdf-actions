@@ -60,6 +60,18 @@ npm test
 npm run dev
 ```
 
+## Releasing
+
+After approved pull requests are merged into `main`, run one non-interactive command:
+
+```bash
+npm run release:patch
+npm run release:minor
+npm run release:major
+```
+
+The command runs validation, updates the changelog and version, commits, tags, pushes, and creates the GitHub release. The pushed tag then publishes the package to npm through GitHub Actions and npm Trusted Publishing.
+
 ## License
 
 [MIT](LICENSE.md)
